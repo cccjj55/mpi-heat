@@ -16,7 +16,7 @@ $(BIN): src/heat_mpi.c
 	$(MPICC) $(CFLAGS) $< -o $(BIN) $(LDFLAGS)
 
 bench: build
-	NP_LIST="$(NP_LIST)" ./scripts/scaling.sh
+	NP_LIST="$(NP_LIST)" bash scripts/scaling.sh
 
 clean:
 	rm -rf build results
