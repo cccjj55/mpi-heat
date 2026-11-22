@@ -76,6 +76,13 @@ Median of 3 timed runs, 100–200 steps each.
 The checksum is identical across every run (`423230.037735` at n=1024 for 1/2/4/8 ranks): the decomposition
 changes the schedule, not the answer.
 
+## Why CI numbers are not in the tables above
+
+GitHub's `ubuntu-latest` runner has **2 vCPUs**. Running 4 ranks there is oversubscription, and the CI log shows
+exactly that: 4,095 MLUPS at 1 rank, 8,230 at 2, 5,007 at 4. It is a perfectly good *regression guard* — the
+checksum test and the build both run there — but it cannot produce a scaling curve. The curves above come from
+a 12-thread machine, and the runner is named next to the numbers that come from it.
+
 ## What I would do next
 
 - [ ] 2D decomposition (rows × columns) so the rank count is not limited by `n % ranks == 0`
