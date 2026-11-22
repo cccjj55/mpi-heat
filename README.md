@@ -6,6 +6,8 @@ they disagree.
 The point of the repo is not "MPI is fast". It is that the **same code** scales 6.4× on one grid size and
 3.3× on another on the same 8 cores, and the explanation has nothing to do with MPI.
 
+![MPI 2D Jacobi Strong Scaling](docs/scaling.svg)
+
 ## The kernel
 
 - 5-point Jacobi stencil, `alpha = 0.20` (below the 0.25 stability limit for 2D explicit)
