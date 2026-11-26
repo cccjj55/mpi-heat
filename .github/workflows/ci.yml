@@ -19,22 +19,23 @@ jobs:
       - name: Build
         run: make build CFLAGS="-O3 -march=native -Wall -Wextra -std=c11"
 
-      - name: Checksum must not depend on the rank count
+      - name: Checksum must not depend on the rank count or halo mode
         run: |
           python3 - <<'EOF'
           import subprocess, sys
           sums = {}
-          for p in (1, 2, 4):
-              out = subprocess.run(
-                  ['mpirun', '--oversubscribe', '-np', str(p), './build/heat_mpi',
-                   '-n', '256', '-t', '50', '-r', '1'],
-                  capture_output=True, text=True, check=True).stdout.strip().splitlines()[-1]
-              sums[p] = out.split(',')[-1]
-              print(f'{p} ranks -> checksum {sums[p]}  ({out})')
+          for mode in ('sendrecv', 'isend'):
+              for p in (1, 2, 4):
+                  out = subprocess.run(
+                      ['mpirun', '--oversubscribe', '-np', str(p), './build/heat_mpi',
+                       '-n', '256', '-t', '50', '-r', '1', '-m', mode],
+                      capture_output=True, text=True, check=True).stdout.strip().splitlines()[-1]
+                  sums[(mode, p)] = out.split(',')[-1]
+                  print(f'{mode} {p} ranks -> checksum {sums[(mode, p)]}  ({out})')
           if len(set(sums.values())) != 1:
-              print('FAIL: checksum changed with the rank count', file=sys.stderr)
+              print('FAIL: checksum changed with rank count or mode', file=sys.stderr)
               sys.exit(1)
-          print('ok: decomposition preserves the answer')
+          print('ok: decomposition and Isend overlap preserve the exact answer')
           EOF
 
       - name: Small scaling run

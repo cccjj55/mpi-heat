@@ -50,30 +50,55 @@ static void exchange_halos(double *u, int local_rows, int n, int rank, int size,
                  1, comm, &status);
 }
 
-static void step(double *u, double *unew, int local_rows, int n) {
+static void step_range(double *u, double *unew, int r_begin, int r_end, int n) {
     const int stride = n;
-    for (int i = 1; i <= local_rows; ++i) {
+    for (int i = r_begin; i <= r_end; ++i) {
         for (int j = 1; j < n - 1; ++j) {
             unew[i * stride + j] = u[i * stride + j] +
                                    ALPHA * (u[(i - 1) * stride + j] + u[(i + 1) * stride + j] +
                                             u[i * stride + j - 1] + u[i * stride + j + 1] -
                                             4.0 * u[i * stride + j]);
         }
-    }
-    /* boundaries stay at zero */
-    for (int i = 1; i <= local_rows; ++i) {
         unew[i * stride + 0] = 0.0;
         unew[i * stride + (n - 1)] = 0.0;
     }
 }
 
+static void step(double *u, double *unew, int local_rows, int n) {
+    step_range(u, unew, 1, local_rows, n);
+}
+
+static void step_isend_overlap(double *u, double *unew, int local_rows, int n, int rank, int size,
+                               MPI_Comm comm) {
+    const int stride = n;
+    const int up = (rank == 0) ? MPI_PROC_NULL : rank - 1;
+    const int down = (rank == size - 1) ? MPI_PROC_NULL : rank + 1;
+    MPI_Request reqs[4];
+
+    MPI_Irecv(&u[(local_rows + 1) * stride], n, MPI_DOUBLE, down, 0, comm, &reqs[0]);
+    MPI_Irecv(&u[0 * stride], n, MPI_DOUBLE, up, 1, comm, &reqs[1]);
+    MPI_Isend(&u[1 * stride], n, MPI_DOUBLE, up, 0, comm, &reqs[2]);
+    MPI_Isend(&u[local_rows * stride], n, MPI_DOUBLE, down, 1, comm, &reqs[3]);
+
+    if (local_rows > 2) {
+        step_range(u, unew, 2, local_rows - 1, n);
+    }
+
+    MPI_Waitall(4, reqs, MPI_STATUSES_IGNORE);
+    step_range(u, unew, 1, 1, n);
+    if (local_rows > 1) {
+        step_range(u, unew, local_rows, local_rows, n);
+    }
+}
+
 int main(int argc, char **argv) {
-    int n = 1024, steps = 100, reps = 3, rows_per_rank = 0;
+    int n = 1024, steps = 100, reps = 3, rows_per_rank = 0, use_isend = 0;
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "-n") && i + 1 < argc) n = atoi(argv[++i]);
         else if (!strcmp(argv[i], "-t") && i + 1 < argc) steps = atoi(argv[++i]);
         else if (!strcmp(argv[i], "-r") && i + 1 < argc) reps = atoi(argv[++i]);
         else if (!strcmp(argv[i], "-w") && i + 1 < argc) rows_per_rank = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "-m") && i + 1 < argc) use_isend = !strcmp(argv[++i], "isend");
     }
 
     MPI_Init(&argc, &argv);
@@ -112,8 +137,12 @@ int main(int argc, char **argv) {
         MPI_Barrier(MPI_COMM_WORLD);
         const double t0 = MPI_Wtime();
         for (int s = 0; s < steps; ++s) {
-            exchange_halos(u, local_rows, n, rank, size, MPI_COMM_WORLD);
-            step(u, unew, local_rows, n);
+            if (use_isend) {
+                step_isend_overlap(u, unew, local_rows, n, rank, size, MPI_COMM_WORLD);
+            } else {
+                exchange_halos(u, local_rows, n, rank, size, MPI_COMM_WORLD);
+                step(u, unew, local_rows, n);
+            }
             double *tmp = u;
             u = unew;
             unew = tmp;
